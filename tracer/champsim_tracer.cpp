@@ -32,6 +32,7 @@ typedef struct trace_instr_format {
 /* ================================================================== */
 
 UINT64 instrCount = 0;
+UINT64 delayInstrCount = 0;
 
 FILE* out;
 
@@ -77,19 +78,39 @@ INT32 Usage()
 
 void BeginInstruction(VOID *ip, UINT32 op_code, VOID *opstring)
 {
-    instrCount++;
     //printf("[%p %u %s ", ip, opcode, (char*)opstring);
 
-    if(instrCount > KnobSkipInstructions.Value()) 
-    {
-        tracing_on = true;
+//    if(instrCount > KnobSkipInstructions.Value()) 
+//    {
+//        tracing_on = true;
+//
+//        if(instrCount > (KnobTraceInstructions.Value()+KnobSkipInstructions.Value()))
+//            tracing_on = false;
+//    }
+//
+    delayInstrCount++;
 
-        if(instrCount > (KnobTraceInstructions.Value()+KnobSkipInstructions.Value()))
-            tracing_on = false;
+    if (!tracing_on && (delayInstrCount >= 2000000000)) {
+      delayInstrCount = 0;
+      fprintf(stderr, "Checking tracing\n");
+
+      FILE* enabler_file = fopen("/tmp/champ_sim_enabler","r");
+      int enabler_file_status = 0;  
+      fscanf(enabler_file, "%d", &enabler_file_status);
+      if (enabler_file_status) {
+          tracing_on = true;
+          fprintf(stderr, "Tracing has been enabled\n");
+      }  
+      fclose(enabler_file);
     }
 
     if(!tracing_on) 
         return;
+
+    instrCount++;
+
+    if ((instrCount & ((1L << 24) - 1)) == 0)
+      fprintf(stderr, "Heartbeat instrCount=%ld\n", instrCount);
 
     // reset the current instruction
     curr_instr.ip = (unsigned long long int)ip;
@@ -116,9 +137,23 @@ void EndInstruction()
 
     //printf("\n");
 
+//    FILE* enabler_file = fopen("/tmp/champ_sim_enabler","r");
+//    int enabler_file_status = 0;  
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wunused-result"
+//    fscanf(enabler_file, "%d", &enabler_file_status);
+//#pragma GCC diagnostic pop
+//    if (enabler_file_status) {
+//        tracing_on = true;
+//    }  
+//    fclose(enabler_file);
+
+    if(!tracing_on) 
+        return;
+
     if(instrCount > KnobSkipInstructions.Value())
     {
-        tracing_on = true;
+//        tracing_on = true;
 
         if(instrCount <= (KnobTraceInstructions.Value()+KnobSkipInstructions.Value()))
         {
@@ -135,6 +170,7 @@ void EndInstruction()
                 output_file_closed = true;
             }
 
+            fprintf(stderr, "Trace has been created\n");
             exit(0);
         }
     }
